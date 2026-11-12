@@ -32,6 +32,7 @@ dependencies {
     implementation(libs.protobuf.lite)
     traceSchemas(libs.otel.proto)
     implementation(libs.okhttp)
+    implementation(libs.firecrawl)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.commons.compress)

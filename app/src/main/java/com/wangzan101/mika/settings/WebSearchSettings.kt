@@ -3,6 +3,7 @@ package com.wangzan101.mika.settings
 import android.content.Context
 import android.content.SharedPreferences
 import com.wangzan101.mika.core.search.ExaSearch
+import com.wangzan101.mika.core.search.FirecrawlSearch
 import com.wangzan101.mika.core.search.JinaSearch
 import com.wangzan101.mika.core.search.KeirolabsSearch
 import com.wangzan101.mika.core.search.SearxngSearch
@@ -89,6 +90,7 @@ class WebSearchSettings(
             WebSearchProvider.Jina -> JinaSearch(entry.apiKey)
             WebSearchProvider.Exa -> ExaSearch(entry.apiKey)
             WebSearchProvider.Keirolabs -> KeirolabsSearch(entry.apiKey)
+            WebSearchProvider.Firecrawl -> FirecrawlSearch(entry.apiKey)
             WebSearchProvider.SearXNG -> SearxngSearch(checkNotNull(WebSearch.parseEndpoint(entry.endpoint)))
         }
     }

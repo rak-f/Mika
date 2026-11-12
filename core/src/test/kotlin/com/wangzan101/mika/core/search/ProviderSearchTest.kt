@@ -13,7 +13,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** SearXNG、Jina、Exa、Keirolabs 四家的请求形状、解析和出错时的说法。 */
+/** SearXNG、Jina、Exa、Keirolabs、Firecrawl 五家的请求形状、解析和出错时的说法。 */
 class ProviderSearchTest {
     private fun ok(body: String) = MockResponse().setResponseCode(200).setHeader("Content-Type", "application/json").setBody(body)
 
@@ -166,6 +166,53 @@ class ProviderSearchTest {
         assertEquals("invalid_response", (KeirolabsSearch("k", client, server.url("/")).search("q", 5) as WebSearchResult.Failure).code)
     }
 
+    // ---------- Firecrawl ----------
+
+    @Test fun firecrawlIsABearerPostWithLimitAndIntegrationTag() = withServer(ok("""{"success":true,"data":{"web":[
+        {"title":"F1","url":"https://f.example/1","description":"first","position":1},
+        {"title":"no url","url":"","description":"dropped"},
+        {"title":"F3","url":"https://f.example/3","description":"third"}]},"creditsUsed":2}""")) { server ->
+        val result = FirecrawlSearch(" fc-key ", client, server.url("/")).search("mika", 3)
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/v2/search", request.path)
+        assertEquals("Bearer fc-key", request.getHeader("Authorization"))
+        val sent = Json.parseToJsonElement(request.body.readUtf8()).jsonObject
+        assertEquals("mika", sent["query"]!!.jsonPrimitive.content)
+        assertEquals(3, sent["limit"]!!.jsonPrimitive.int)
+        assertEquals("_mika", sent["integration"]!!.jsonPrimitive.content)
+        assertEquals(null, sent["scrapeOptions"])
+        assertEquals(
+            listOf(WebSearchHit("F1", "https://f.example/1", "first"), WebSearchHit("F3", "https://f.example/3", "third")),
+            (result as WebSearchResult.Success).hits,
+        )
+    }
+
+    @Test fun firecrawlAsksForAtMostTheSharedMaximum() = withServer(ok("""{"success":true,"data":{"web":[]}}""")) { server ->
+        FirecrawlSearch("k", client, server.url("/")).search("q", 50)
+        assertEquals(WebSearch.MAX_COUNT, Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject["limit"]!!.jsonPrimitive.int)
+    }
+
+    @Test fun firecrawlRejectedKeyIsAuthenticationFailure() = withServer(MockResponse().setResponseCode(401).setBody("""{"success":false,"error":"Unauthorized: Invalid token"}""")) { server ->
+        assertEquals("authentication_failed", (FirecrawlSearch("bad", client, server.url("/")).search("q", 5) as WebSearchResult.Failure).code)
+    }
+
+    @Test fun firecrawlPaymentRequiredIsQuota() = withServer(MockResponse().setResponseCode(402).setBody("""{"success":false,"error":"Insufficient credits"}""")) { server ->
+        assertEquals("quota_exhausted", (FirecrawlSearch("k", client, server.url("/")).search("q", 5) as WebSearchResult.Failure).code)
+    }
+
+    @Test fun firecrawlRateLimitIsRateLimited() = withServer(MockResponse().setResponseCode(429).setBody("{}")) { server ->
+        assertEquals("rate_limited", (FirecrawlSearch("k", client, server.url("/")).search("q", 5) as WebSearchResult.Failure).code)
+    }
+
+    @Test fun firecrawlWithoutWebArrayIsInvalidResponse() = withServer(ok("""{"success":true,"data":{}}""")) { server ->
+        assertEquals("invalid_response", (FirecrawlSearch("k", client, server.url("/")).search("q", 5) as WebSearchResult.Failure).code)
+    }
+
+    @Test fun firecrawlNonJsonIsInvalidResponse() = withServer(ok("not json")) { server ->
+        assertEquals("invalid_response", (FirecrawlSearch("k", client, server.url("/")).search("q", 5) as WebSearchResult.Failure).code)
+    }
+
     // ---------- 共用 ----------
 
     @Test fun providersNeedTheRightFields() {
@@ -175,6 +222,8 @@ class ProviderSearchTest {
         assertEquals(null, WebSearchProvider.Exa.problem("", "k"))
         assertEquals(WebSearchProvider.Problem.Key, WebSearchProvider.Keirolabs.problem("", ""))
         assertEquals(null, WebSearchProvider.Keirolabs.problem("", "k"))
+        assertEquals(WebSearchProvider.Problem.Key, WebSearchProvider.Firecrawl.problem("", ""))
+        assertEquals(null, WebSearchProvider.Firecrawl.problem("", "k"))
         assertEquals(WebSearchProvider.Problem.Endpoint, WebSearchProvider.SearXNG.problem("not a url", ""))
         assertEquals(null, WebSearchProvider.SearXNG.problem("https://searx.example.org", ""))
     }
